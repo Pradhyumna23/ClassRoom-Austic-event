@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: classroom-ai
+    runtime: python
+    runtimeVersion: 3.10
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: DEBUG
+        value: "False"
