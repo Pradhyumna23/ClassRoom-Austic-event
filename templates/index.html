@@ -1,0 +1,1161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Classroom Analysis Dashboard</title>
+    <link rel="stylesheet" href="../style.css">
+    <style>
+        html, body {
+            height: auto;
+            margin: 0;
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(to right, #e0f7fa, #80deea);
+            overflow-x: hidden;
+            position: relative;
+        }
+        body {
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            align-items: center;
+            min-height: 100vh;
+        }
+        body::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: radial-gradient(circle, rgba(255,255,255,0.2) 1%, transparent 1%), radial-gradient(circle, rgba(255,255,255,0.2) 1%, transparent 1%);
+            background-size: 50px 50px;
+            background-position: 0 0, 25px 25px;
+            animation: bubble 20s infinite linear;
+            z-index: 1;
+        }
+        @keyframes bubble {
+            0% { background-position: 0 0, 25px 25px; }
+            100% { background-position: 25px 25px, 0 0; }
+        }
+        .navbar {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 20px;
+            background-color: #007BFF;
+            color: white;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            z-index: 3;
+        }
+        .navbar .title {
+            font-size: 1.5em;
+        }
+        .navbar .user-info {
+            display: flex;
+            align-items: center;
+        }
+        .navbar button {
+            background-color: #ff4d4d;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            padding: 5px 10px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .navbar button:hover {
+            background-color: #e60000;
+        }
+        .main-container {
+            width: 90%;
+            max-width: 1400px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-gap: 30px;
+            margin: 30px auto;
+            position: relative;
+            z-index: 2;
+        }
+        .panel {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        .panel:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 24px rgba(0, 0, 0, 0.3);
+        }
+        h2 {
+            font-size: 2em;
+            color: #00796b;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        input[type="text"],
+        input[type="date"],
+        input[type="time"],
+        input[type="number"],
+        input[type="file"] {
+            padding: 12px;
+            margin: 8px 0;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            width: 100%;
+            max-width: 350px;
+            transition: border-color 0.3s, box-shadow 0.3s;
+        }
+        input[type="text"]:focus,
+        input[type="date"]:focus,
+        input[type="time"]:focus,
+        input[type="number"]:focus {
+            border-color: #007BFF;
+            box-shadow: 0 0 8px rgba(0, 123, 255, 0.2);
+        }
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            background-color: #ff4081;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s, transform 0.3s;
+            width: 100%;
+            max-width: 350px;
+            margin-top: 8px;
+        }
+        button:hover {
+            background-color: #e91e63;
+            transform: translateY(-3px);
+        }
+        .upload-btn {
+            background-color: #4CAF50;
+        }
+        .upload-btn:hover {
+            background-color: #45a049;
+        }
+        .webcam-btn {
+            background-color: #ff9800;
+        }
+        .webcam-btn:hover {
+            background-color: #e68900;
+        }
+        #chart-container-audio,
+        #chart-container-emotion {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 350px;
+            margin-top: 30px;
+        }
+        canvas {
+            width: 100% !important;
+            height: auto !important;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 15px 0;
+            color: #007BFF;
+            font-weight: bold;
+        }
+        .error {
+            color: red;
+            text-align: center;
+            margin: 10px 0;
+            display: none;
+            padding: 10px;
+            background-color: #ffe6e6;
+            border-radius: 5px;
+        }
+        .success {
+            color: green;
+            text-align: center;
+            margin: 10px 0;
+            display: none;
+            padding: 10px;
+            background-color: #e6ffe6;
+            border-radius: 5px;
+        }
+        .results-section {
+            margin-top: 20px;
+            padding: 20px;
+            background-color: #f5f5f5;
+            border-radius: 5px;
+            display: none;
+        }
+        .results-section.show {
+            display: block;
+        }
+        .emotion-result {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            margin: 5px 0;
+            background-color: #fff;
+            border-radius: 5px;
+            border-left: 5px solid #ccc;
+        }
+        .emotion-name {
+            font-weight: bold;
+            color: #00796b;
+            font-size: 1.05em;
+        }
+        .emotion-confidence {
+            background-color: #007BFF;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+        }
+        /* Emotion-specific styling */
+        .emotion-result.attentive { border-left-color: #4CAF50; }
+        .emotion-result.engaged { border-left-color: #2196F3; }
+        .emotion-result.confused { border-left-color: #FFC107; }
+        .emotion-result.distracted { border-left-color: #F44336; }
+        .emotion-result.drowsy { border-left-color: #9C27B0; }
+        .emotion-result.frustrated { border-left-color: #FF9800; }
+        .emotion-result.anxious { border-left-color: #00BCD4; }
+        .emotion-result.yawning { border-left-color: #E91E63; }
+        .bottom-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 30px;
+            flex-wrap: wrap;
+            position: relative;
+            z-index: 10;
+        }
+        .view-history-btn {
+            background-color: #2196F3;
+            max-width: 400px;
+            flex: 1;
+        }
+        .view-history-btn:hover {
+            background-color: #0b7dda;
+        }
+        /* Media Preview Styles */
+        .media-preview-container {
+            display: none;
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border: 2px solid #00796b;
+            border-radius: 8px;
+            text-align: center;
+            max-width: 350px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .media-preview-container.show {
+            display: block;
+        }
+        .media-preview-container img {
+            max-width: 100%;
+            height: auto;
+            max-height: 300px;
+            border-radius: 5px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        .media-preview-container video {
+            max-width: 100%;
+            height: auto;
+            max-height: 300px;
+            border-radius: 5px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        .media-preview-label {
+            font-weight: bold;
+            color: #00796b;
+            margin-bottom: 10px;
+            font-size: 0.9em;
+        }
+        @media (max-width: 1024px) {
+            .main-container {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Classroom Analysis Styles */
+        .results-section {
+            display: none;
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border: 2px solid #00796b;
+            border-radius: 8px;
+        }
+        .results-section.show {
+            display: block;
+        }
+
+        .student-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+            color: white;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            transition: transform 0.2s;
+        }
+        .student-card:hover {
+            transform: scale(1.05);
+        }
+        .student-id {
+            font-size: 0.9em;
+            opacity: 0.9;
+            margin-bottom: 5px;
+        }
+        .student-emotion {
+            font-weight: bold;
+            font-size: 1.1em;
+            margin-bottom: 5px;
+        }
+        .student-confidence {
+            font-size: 0.85em;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 3px 8px;
+            border-radius: 4px;
+            display: inline-block;
+        }
+        .student-card.attentive { background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%); }
+        .student-card.engaged { background: linear-gradient(135deg, #2196F3 0%, #0b7dda 100%); }
+        .student-card.drowsy { background: linear-gradient(135deg, #9C27B0 0%, #7b1fa2 100%); }
+        .student-card.frustrated { background: linear-gradient(135deg, #FF9800 0%, #f57c00 100%); }
+        .student-card.confusion { background: linear-gradient(135deg, #FFC107 0%, #ffa000 100%); }
+        .student-card.anxious { background: linear-gradient(135deg, #00BCD4 0%, #00acc1 100%); }
+        .student-card.distracted { background: linear-gradient(135deg, #F44336 0%, #d32f2f 100%); }
+    </style>
+</head>
+<body>
+    <div class="navbar">
+        <div class="title">Classroom Analysis Dashboard</div>
+        <div class="user-info">
+            <button onclick="window.location.href='/login'">Logout</button>
+        </div>
+    </div>
+
+    <div class="main-container">
+        <!-- AUDIO ANALYSIS PANEL -->
+        <div class="panel">
+            <h2>🎵 Audio Analysis</h2>
+            <form id="audio-form">
+                <div class="form-group">
+                    <input id="class-input" type="text" name="class" placeholder="Class" required>
+                    <input id="section-input" type="text" name="section" placeholder="Section" required>
+                    <input id="date-input" type="date" name="date" required>
+                    <input id="time-input" type="time" name="time" required>
+                    <input type="file" id="audioInput" accept="audio/*" style="display: none;">
+                    <button type="button" class="upload-btn" onclick="document.getElementById('audioInput').click()">
+                        📁 Upload Audio File
+                    </button>
+                </div>
+                <div class="loading" id="audio-loading">Analyzing audio... Please wait.</div>
+                <div class="error" id="audio-error"></div>
+                <!-- Submit button removed; use Save Analysis to store combined results -->
+            </form>
+            <div id="chart-container-audio">
+                <canvas id="pieChartAudio"></canvas>
+            </div>
+            <!-- Audio submit success message removed (handled by Save Analysis) -->
+        </div>
+
+        <!-- EMOTION DETECTION PANEL -->
+        <div class="panel">
+            <h2>😊 Emotion Detection</h2>
+            <div class="form-group">
+                <label style="text-align: left; width: 100%; max-width: 350px; font-weight: bold;">Upload Image:</label>
+                <input type="file" id="emotionImageInput" accept="image/*" style="display: none;">
+                <button type="button" class="upload-btn" onclick="document.getElementById('emotionImageInput').click()">
+                    📷 Upload Image
+                </button>
+
+                <label style="text-align: left; width: 100%; max-width: 350px; font-weight: bold; margin-top: 15px;">Upload Video:</label>
+                <input type="file" id="emotionVideoInput" accept="video/*" style="display: none;">
+                <button type="button" class="upload-btn" onclick="document.getElementById('emotionVideoInput').click()">
+                    🎬 Upload Video
+                </button>
+                <input type="number" id="videoSampleFrames" placeholder="Sample Frames (default: 10)" min="1" max="100" style="max-width: 350px;">
+
+                <label style="text-align: left; width: 100%; max-width: 350px; font-weight: bold; margin-top: 15px;">Webcam Detection:</label>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap; max-width: 350px;">
+                    <button type="button" class="webcam-btn" id="startRecordingBtn" onclick="startWebcamRecording()">
+                        🔴 Start Recording
+                    </button>
+                    <button type="button" class="webcam-btn" id="stopRecordingBtn" onclick="stopWebcamRecording()" disabled style="opacity: 0.5; cursor: not-allowed;">
+                        ⏹️ Stop Recording
+                    </button>
+                </div>
+                <!-- Live Webcam Feed -->
+                <div style="margin-top: 15px; border-radius: 8px; overflow: hidden; background: #000; max-width: 350px;">
+                    <video id="liveWebcamFeed" style="width: 100%; height: auto; display: none; background: #000;" autoplay muted playsinline></video>
+                    <div id="webcam-placeholder" style="width: 100%; height: 200px; background: #1a1a1a; display: flex; align-items: center; justify-content: center; color: #888; text-align: center;">
+                        📹 Webcam feed will appear here
+                    </div>
+                </div>
+            </div>
+            <div class="loading" id="emotion-loading">Processing... Please wait.</div>
+            <div class="error" id="emotion-error"></div>
+
+            <!-- Media Preview Container for Image -->
+            <div class="media-preview-container" id="image-preview-container">
+                <div class="media-preview-label">📷 Image Preview</div>
+                <img id="image-preview" alt="Image preview">
+            </div>
+
+            <!-- Media Preview Container for Video -->
+            <div class="media-preview-container" id="video-preview-container">
+                <div class="media-preview-label">🎬 Video Preview</div>
+                <video id="video-preview" controls style="width: 100%; max-height: 300px; border-radius: 5px;"></video>
+            </div>
+
+            <div class="results-section" id="emotion-results">
+                <h3 style="text-align: center; color: #00796b;">Emotion Detection Results</h3>
+                <div style="text-align: center; margin-bottom: 15px;">
+                    <span style="font-size: 1.5em; font-weight: bold;" id="dominant-emotion">-</span>
+                    <p style="color: #666; margin: 5px 0;">Dominant Emotion</p>
+                </div>
+                <div id="emotion-details"></div>
+            </div>
+
+            <div id="chart-container-emotion">
+                <canvas id="pieChartEmotion"></canvas>
+            </div>
+            <div class="success" id="emotion-success">✓ Emotion analysis completed!</div>
+        </div>
+
+        <!-- CLASSROOM ANALYSIS PANEL -->
+        <div class="panel">
+            <h2>👥 Classroom Analysis</h2>
+            <div class="form-group">
+                <label style="text-align: left; width: 100%; max-width: 350px; font-weight: bold;">Upload Classroom Image:</label>
+                <input type="file" id="classroomImageInput" accept="image/*" style="display: none;">
+                <button type="button" class="upload-btn" onclick="document.getElementById('classroomImageInput').click()">
+                    📸 Upload Image
+                </button>
+            </div>
+
+            <div class="loading" id="classroom-loading">Analyzing classroom... Please wait.</div>
+            <div class="error" id="classroom-error"></div>
+
+            <!-- Classroom Media Preview -->
+            <div class="media-preview-container" id="classroom-preview-container">
+                <div class="media-preview-label">📸 Classroom Preview</div>
+                <img id="classroom-preview" alt="Classroom preview">
+            </div>
+
+            <!-- Classroom Summary Stats -->
+            <div class="results-section" id="classroom-results">
+                <h3 style="text-align: center; color: #00796b;">Classroom Summary</h3>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+                    <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; text-align: center;">
+                        <div style="font-size: 2em; font-weight: bold; color: #1976d2;" id="total-faces-count">0</div>
+                        <div style="color: #666; font-size: 0.9em;">Students Detected</div>
+                    </div>
+                    <div style="background: #fff3e0; padding: 15px; border-radius: 8px; text-align: center;">
+                        <div style="font-size: 2em; font-weight: bold; color: #f57c00;" id="dominant-classroom-emotion">😊</div>
+                        <div style="color: #666; font-size: 0.9em;">Classroom Mood</div>
+                    </div>
+                </div>
+
+                <!-- Emotion Distribution Chart -->
+                <div id="classroom-chart-container" style="position: relative; height: 250px; margin-bottom: 20px;">
+                    <canvas id="classroomEmotionChart"></canvas>
+                </div>
+
+                <!-- Individual Students Grid -->
+                <h4 style="text-align: left; color: #00796b; margin: 20px 0 15px 0;">📍 Individual Students</h4>
+                <div id="students-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px;"></div>
+            </div>
+
+            <div class="success" id="classroom-success">✓ Classroom analysis completed!</div>
+        </div>
+    </div>
+
+    <div class="bottom-buttons" style="z-index: 10; position: relative;">
+        <button type="button" class="view-history-btn" id="view-history-btn" onclick="goToHistory()">📜 View History</button>
+        <button type="button" class="view-history-btn" id="save-analysis-btn" style="background-color:#4CAF50;" disabled>💾 Save Analysis</button>
+    </div>
+
+    <!-- Toast for save success -->
+    <div id="save-toast" style="position:fixed;bottom:20px;right:20px;background:#4CAF50;color:#fff;padding:12px 18px;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,0.15);display:none;z-index:9999;">Saved</div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        let audioChart = null;
+        let emotionChart = null;
+        let classroomChart = null;
+
+        // ============== CLASSROOM ANALYSIS ==============
+        document.getElementById('classroomImageInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            // Show preview
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                document.getElementById('classroom-preview').src = event.target.result;
+                document.getElementById('classroom-preview-container').classList.add('show');
+            };
+            reader.readAsDataURL(file);
+
+            // Upload and analyze
+            analyzeClassroomImage(file);
+        });
+
+        function analyzeClassroomImage(file) {
+            const formData = new FormData();
+            formData.append('image', file);
+
+            const resultsDiv = document.getElementById('classroom-results');
+            document.getElementById('classroom-loading').style.display = 'block';
+            document.getElementById('classroom-error').style.display = 'none';
+            resultsDiv.classList.remove('show');
+            resultsDiv.style.display = 'none';
+
+            fetch('/classroom-analyze', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('classroom-loading').style.display = 'none';
+                
+                if (data.error) {
+                    document.getElementById('classroom-error').textContent = `Error: ${data.error}`;
+                    document.getElementById('classroom-error').style.display = 'block';
+                    return;
+                }
+
+                updateClassroomResults(data);
+            })
+            .catch(error => {
+                document.getElementById('classroom-loading').style.display = 'none';
+                document.getElementById('classroom-error').textContent = `Error: ${error.message}`;
+                document.getElementById('classroom-error').style.display = 'block';
+            });
+        }
+
+        // ============== SAVE COMBINED ANALYSIS ==============
+        document.getElementById('save-analysis-btn').addEventListener('click', saveAllAnalysis);
+
+        function getChartData(chart) {
+            if (!chart || !chart.data) return null;
+            const labels = chart.data.labels || [];
+            const data = (chart.data.datasets && chart.data.datasets[0] && chart.data.datasets[0].data) ? chart.data.datasets[0].data : [];
+            return { labels: labels, data: data };
+        }
+
+        function saveAllAnalysis() {
+            const classroomData = getChartData(classroomChart);
+            const audioData = getChartData(audioChart);
+            const emotionData = getChartData(emotionChart);
+
+            // Helper to get top label from chart data
+            function getTopLabel(chartData) {
+                if (!chartData || !Array.isArray(chartData.labels) || !Array.isArray(chartData.data) || chartData.data.length === 0) return null;
+                let maxIdx = 0;
+                for (let i = 1; i < chartData.data.length; i++) {
+                    if (Number(chartData.data[i]) > Number(chartData.data[maxIdx])) maxIdx = i;
+                }
+                return chartData.labels[maxIdx] || null;
+            }
+
+            const labels = {
+                dominant_classroom: document.getElementById('dominant-classroom-emotion') ? document.getElementById('dominant-classroom-emotion').textContent : null,
+                total_faces: document.getElementById('total-faces-count') ? document.getElementById('total-faces-count').textContent : null,
+                classroom_label: getTopLabel(classroomData),
+                audio_label: getTopLabel(audioData),
+                emotion_label: getTopLabel(emotionData)
+            };
+
+            // Metadata inputs
+            const className = document.getElementById('class-input') ? document.getElementById('class-input').value : null;
+            const sectionName = document.getElementById('section-input') ? document.getElementById('section-input').value : null;
+            const dateVal = document.getElementById('date-input') ? document.getElementById('date-input').value : null;
+            const timeVal = document.getElementById('time-input') ? document.getElementById('time-input').value : null;
+
+            const payload = {
+                class: className,
+                section: sectionName,
+                date: dateVal,
+                time: timeVal,
+                classroom_pie: classroomData,
+                audio_pie: audioData,
+                emotion_pie: emotionData,
+                labels: labels
+            };
+
+            fetch('/submit_all', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+            .then(res => res.json())
+            .then(resp => {
+                if (resp.error || (resp.message && resp.message.includes('Failed'))) {
+                    // show inline error
+                    const toast = document.getElementById('save-toast');
+                    toast.textContent = 'Failed to save: ' + (resp.error || resp.message);
+                    toast.style.background = '#E53935';
+                    toast.style.display = 'block';
+                    setTimeout(() => { toast.style.display = 'none'; toast.style.background = '#4CAF50'; }, 3500);
+                } else {
+                    const toast = document.getElementById('save-toast');
+                    toast.textContent = 'Analysis saved successfully';
+                    toast.style.background = '#4CAF50';
+                    toast.style.display = 'block';
+                    // disable save briefly to prevent double-posts
+                    const btn = document.getElementById('save-analysis-btn');
+                    btn.disabled = true;
+                    setTimeout(() => { toast.style.display = 'none'; btn.disabled = false; }, 2000);
+                }
+                updateSaveButtonState();
+            })
+            .catch(err => {
+                console.error('Save analysis error', err);
+                const toast = document.getElementById('save-toast');
+                toast.textContent = 'Error saving analysis: ' + err.message;
+                toast.style.background = '#E53935';
+                toast.style.display = 'block';
+                setTimeout(() => { toast.style.display = 'none'; toast.style.background = '#4CAF50'; }, 3500);
+            });
+        }
+
+        // Enable/disable Save button when at least one chart has data
+        function updateSaveButtonState() {
+            const btn = document.getElementById('save-analysis-btn');
+            const hasClassroom = classroomChart && classroomChart.data && classroomChart.data.datasets && classroomChart.data.datasets[0] && classroomChart.data.datasets[0].data && classroomChart.data.datasets[0].data.length > 0;
+            const hasAudio = audioChart && audioChart.data && audioChart.data.datasets && audioChart.data.datasets[0] && audioChart.data.datasets[0].data && audioChart.data.datasets[0].data.length > 0;
+            const hasEmotion = emotionChart && emotionChart.data && emotionChart.data.datasets && emotionChart.data.datasets[0] && emotionChart.data.datasets[0].data && emotionChart.data.datasets[0].data.length > 0;
+            btn.disabled = !(hasClassroom || hasAudio || hasEmotion);
+        }
+
+        function updateClassroomResults(data) {
+            const emotionEmojis = {
+                'attentive': '😊',
+                'engaged': '👀',
+                'confusion': '🤔',
+                'distracted': '😕',
+                'drowsy': '🥱',
+                'frustrated': '😤',
+                'anxious': '😰'
+            };
+
+            console.log('Classroom results received:', data);
+
+            // Update summary stats
+            document.getElementById('total-faces-count').textContent = data.total_faces_analyzed || 0;
+            const dominantEmotion = data.dominant_emotion || 'Unknown';
+            document.getElementById('dominant-classroom-emotion').textContent = emotionEmojis[dominantEmotion] || '🎭';
+
+            console.log('Updated stats - Total faces:', data.total_faces_analyzed, 'Dominant:', dominantEmotion);
+
+            // Create emotion chart
+            const ctx = document.getElementById('classroomEmotionChart').getContext('2d');
+            
+            if (classroomChart) {
+                classroomChart.destroy();
+            }
+
+            const colors = ['#4CAF50', '#2196F3', '#9C27B0', '#FF9800', '#FFC107', '#F44336', '#00BCD4'];
+            
+            // Use average_emotions for chart (percentages), fallback to emotions_summary (counts)
+            let chartData = data.average_emotions || data.emotions_summary || {};
+            
+            // Filter out zero or empty values for cleaner visualization
+            chartData = Object.fromEntries(Object.entries(chartData).filter(([k, v]) => v !== 0 && v !== null && v !== undefined));
+            
+            console.log('Chart data:', chartData);
+            console.log('All response data:', data);
+
+            if (Object.keys(chartData).length === 0) {
+                console.warn('No emotion data available for chart - showing all emotions with 0 count');
+                // If no emotions detected, show empty chart with message
+                chartData = Object.fromEntries(Object.entries(data.emotions_summary || data.average_emotions || {}).slice(0, 7));
+            }
+
+            classroomChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(chartData).map(e => e.charAt(0).toUpperCase() + e.slice(1)),
+                    datasets: [{
+                        data: Object.values(chartData),
+                        backgroundColor: colors.slice(0, Object.keys(chartData).length),
+                        borderWidth: 2,
+                        borderColor: 'rgba(255, 255, 255, 0.8)'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                font: { size: 12 },
+                                padding: 15
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: `Classroom Emotion Distribution (${data.total_faces_analyzed || 0} students)`,
+                            font: { size: 14, weight: 'bold' }
+                        }
+                    }
+                }
+            });
+
+            // Create student cards
+            const studentsGrid = document.getElementById('students-grid');
+            studentsGrid.innerHTML = '';
+
+            if (data.individual_emotions && Array.isArray(data.individual_emotions)) {
+                console.log('Creating student cards for', data.individual_emotions.length, 'students');
+                data.individual_emotions.forEach(student => {
+                    const card = document.createElement('div');
+                    card.className = `student-card ${student.classroom_emotion}`;
+                    const emoji = emotionEmojis[student.classroom_emotion] || '🎭';
+                    card.innerHTML = `
+                        <div class="student-id">Student ${student.face_id}</div>
+                        <div class="student-emotion">${emoji} ${student.classroom_emotion}</div>
+                        <div class="student-confidence">${(student.confidence || 0).toFixed(1)}%</div>
+                    `;
+                    studentsGrid.appendChild(card);
+                });
+            } else {
+                console.log('No individual emotions found in data');
+            }
+
+            // Show results - CRITICAL FIX
+            const resultsDiv = document.getElementById('classroom-results');
+            console.log('Results div element:', resultsDiv);
+            resultsDiv.style.display = 'block';
+            resultsDiv.classList.add('show');
+            
+            console.log('Showing success message');
+            document.getElementById('classroom-success').style.display = 'block';
+            setTimeout(() => {
+                document.getElementById('classroom-success').style.display = 'none';
+            }, 3000);
+
+            // Update Save button state
+            updateSaveButtonState();
+        }
+
+
+        // ============== AUDIO ANALYSIS ==============
+        document.getElementById('audioInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            document.getElementById('audio-loading').style.display = 'block';
+            document.getElementById('audio-error').style.display = 'none';
+
+            const formData = new FormData();
+            formData.append('audio', file);
+
+            fetch('/upload', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                updateAudioChart(data);
+            })
+            .catch(error => {
+                document.getElementById('audio-error').textContent = '❌ Error: ' + error.message;
+                document.getElementById('audio-error').style.display = 'block';
+            })
+            .finally(() => {
+                document.getElementById('audio-loading').style.display = 'none';
+            });
+        });
+
+        function updateAudioChart(data) {
+            const ctx = document.getElementById('pieChartAudio').getContext('2d');
+            
+            if (audioChart) {
+                audioChart.destroy();
+            }
+
+            const colors = ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9999', '#66FF99', '#99CCFF'];
+
+            audioChart = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: Object.keys(data),
+                    datasets: [{
+                        data: Object.values(data),
+                        backgroundColor: colors.slice(0, Object.keys(data).length)
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        },
+                        title: {
+                            display: true,
+                            text: 'Audio Event Classification'
+                        }
+                    }
+                }
+            });
+
+            // pie_chart_data field removed; data will be saved via Save Analysis
+
+            // Update Save button state
+            updateSaveButtonState();
+        }
+
+        // Audio form submission removed; use Save Analysis to persist combined data
+
+        // ============== EMOTION DETECTION ==============
+        document.getElementById('emotionImageInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            // Show image preview
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const imagePreview = document.getElementById('image-preview');
+                imagePreview.src = event.target.result;
+                document.getElementById('image-preview-container').classList.add('show');
+                document.getElementById('video-preview-container').classList.remove('show');
+            };
+            reader.readAsDataURL(file);
+
+            document.getElementById('emotion-loading').style.display = 'block';
+            document.getElementById('emotion-error').style.display = 'none';
+
+            const formData = new FormData();
+            formData.append('image', file);
+
+            fetch('/emotion-detect', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                updateEmotionChart(data);
+            })
+            .catch(error => {
+                document.getElementById('emotion-error').textContent = '❌ Error: ' + error.message;
+                document.getElementById('emotion-error').style.display = 'block';
+            })
+            .finally(() => {
+                document.getElementById('emotion-loading').style.display = 'none';
+            });
+        });
+
+        document.getElementById('emotionVideoInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            // Show video preview
+            const videoPreview = document.getElementById('video-preview');
+            const videoURL = URL.createObjectURL(file);
+            videoPreview.src = videoURL;
+            document.getElementById('video-preview-container').classList.add('show');
+            document.getElementById('image-preview-container').classList.remove('show');
+
+            document.getElementById('emotion-loading').style.display = 'block';
+            document.getElementById('emotion-error').style.display = 'none';
+
+            const formData = new FormData();
+            formData.append('video', file);
+            const sampleFrames = document.getElementById('videoSampleFrames').value || 10;
+            formData.append('sample_frames', sampleFrames);
+
+            fetch('/emotion-detect-video', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                if (data.average_emotions) {
+                    updateEmotionChart(data);
+                } else {
+                    throw new Error('No emotion data in response');
+                }
+            })
+            .catch(error => {
+                document.getElementById('emotion-error').textContent = '❌ Error: ' + error.message;
+                document.getElementById('emotion-error').style.display = 'block';
+            })
+            .finally(() => {
+                document.getElementById('emotion-loading').style.display = 'none';
+            });
+        });
+
+        // Webcam Recording Variables
+        let mediaRecorder;
+        let recordedChunks = [];
+        let recordedVideoFile = null;
+
+        async function startWebcamRecording() {
+            try {
+                document.getElementById('emotion-error').style.display = 'none';
+                
+                // Request camera access
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    audio: true,
+                    video: { width: 320, height: 240 }
+                });
+
+                // Show live feed and hide placeholder
+                const videoElement = document.getElementById('liveWebcamFeed');
+                const placeholder = document.getElementById('webcam-placeholder');
+                videoElement.srcObject = stream;
+                videoElement.style.display = 'block';
+                placeholder.style.display = 'none';
+
+                // Setup MediaRecorder
+                recordedChunks = [];
+                const options = { mimeType: 'video/webm;codecs=vp9' };
+                if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                    options.mimeType = 'video/webm';
+                }
+                
+                mediaRecorder = new MediaRecorder(stream, options);
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) {
+                        recordedChunks.push(event.data);
+                    }
+                };
+
+                mediaRecorder.start();
+
+                // Update button states
+                document.getElementById('startRecordingBtn').disabled = true;
+                document.getElementById('startRecordingBtn').style.opacity = '0.5';
+                document.getElementById('startRecordingBtn').style.cursor = 'not-allowed';
+                document.getElementById('stopRecordingBtn').disabled = false;
+                document.getElementById('stopRecordingBtn').style.opacity = '1';
+                document.getElementById('stopRecordingBtn').style.cursor = 'pointer';
+
+            } catch (error) {
+                document.getElementById('emotion-error').textContent = '❌ Camera Error: ' + error.message;
+                document.getElementById('emotion-error').style.display = 'block';
+            }
+        }
+
+        function stopWebcamRecording() {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+
+                // Stop all tracks
+                const videoElement = document.getElementById('liveWebcamFeed');
+                videoElement.srcObject.getTracks().forEach(track => track.stop());
+
+                // Hide live feed and show placeholder
+                videoElement.style.display = 'none';
+                document.getElementById('webcam-placeholder').style.display = 'flex';
+
+                // Update button states
+                document.getElementById('startRecordingBtn').disabled = false;
+                document.getElementById('startRecordingBtn').style.opacity = '1';
+                document.getElementById('startRecordingBtn').style.cursor = 'pointer';
+                document.getElementById('stopRecordingBtn').disabled = true;
+                document.getElementById('stopRecordingBtn').style.opacity = '0.5';
+                document.getElementById('stopRecordingBtn').style.cursor = 'not-allowed';
+
+                // Process recorded video
+                setTimeout(() => {
+                    processRecordedVideo();
+                }, 100);
+            }
+        }
+
+        function processRecordedVideo() {
+            if (recordedChunks.length === 0) {
+                document.getElementById('emotion-error').textContent = '❌ No video data recorded';
+                document.getElementById('emotion-error').style.display = 'block';
+                return;
+            }
+
+            // Create blob and preview
+            const blob = new Blob(recordedChunks, { type: 'video/webm' });
+            recordedVideoFile = blob;
+
+            // Show video preview
+            const videoPreview = document.getElementById('video-preview');
+            const previewContainer = document.getElementById('video-preview-container');
+            videoPreview.src = URL.createObjectURL(blob);
+            previewContainer.style.display = 'block';
+
+            // Send to backend for analysis
+            analyzeRecordedVideo(blob);
+        }
+
+        function analyzeRecordedVideo(videoBlob) {
+            document.getElementById('emotion-loading').style.display = 'block';
+            document.getElementById('emotion-error').style.display = 'none';
+
+            const formData = new FormData();
+            formData.append('video', videoBlob, 'webcam_recording.webm');
+            formData.append('sample_frames', 10);
+
+            fetch('/emotion-detect-video', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                if (data.average_emotions) {
+                    updateEmotionChart(data);
+                } else {
+                    throw new Error('No emotion data in response');
+                }
+            })
+            .catch(error => {
+                document.getElementById('emotion-error').textContent = '❌ Error: ' + error.message;
+                document.getElementById('emotion-error').style.display = 'block';
+            })
+            .finally(() => {
+                document.getElementById('emotion-loading').style.display = 'none';
+            });
+        }
+
+        function updateEmotionChart(data) {
+            const emotions = data.average_emotions || data.emotions || {};
+            const dominantEmotion = data.dominant_emotion || 'Unknown';
+
+            // Emotion emoji mapping
+            const emotionEmojis = {
+                'attentive': '😊',
+                'engaged': '👀',
+                'confused': '🤔',
+                'distracted': '😕',
+                'drowsy': '🥱',
+                'frustrated': '😤',
+                'anxious': '😰',
+                'yawning': '😑'
+            };
+
+            // Update dominant emotion display
+            const emoji = emotionEmojis[dominantEmotion] || '🎭';
+            document.getElementById('dominant-emotion').textContent = `${emoji} ${dominantEmotion.toUpperCase()}`;
+
+            // Create detailed results
+            const detailsDiv = document.getElementById('emotion-details');
+            detailsDiv.innerHTML = '';
+            for (const [emotion, confidence] of Object.entries(emotions)) {
+                const resultDiv = document.createElement('div');
+                const emotionEmoji = emotionEmojis[emotion] || '🎭';
+                resultDiv.className = `emotion-result ${emotion}`;
+                resultDiv.innerHTML = `
+                    <span class="emotion-name">${emotionEmoji} ${emotion.charAt(0).toUpperCase() + emotion.slice(1)}</span>
+                    <span class="emotion-confidence">${(confidence).toFixed(2)}%</span>
+                `;
+                detailsDiv.appendChild(resultDiv);
+            }
+
+            // Show results section
+            document.getElementById('emotion-results').classList.add('show');
+
+            // Update chart
+            const ctx = document.getElementById('pieChartEmotion').getContext('2d');
+            
+            if (emotionChart) {
+                emotionChart.destroy();
+            }
+
+            // Enhanced color scheme for 6 emotion categories
+            // Mapped to: attentive, engaged, confused, distracted, drowsy, frustrated, anxious, yawning
+            const colors = ['#4CAF50', '#2196F3', '#FFC107', '#F44336', '#9C27B0', '#FF9800', '#00BCD4', '#E91E63'];
+
+            emotionChart = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: Object.keys(emotions),
+                    datasets: [{
+                        data: Object.values(emotions),
+                        backgroundColor: colors.slice(0, Object.keys(emotions).length)
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        },
+                        title: {
+                            display: true,
+                            text: 'Student Emotion Distribution'
+                        }
+                    }
+                }
+            });
+
+            document.getElementById('emotion-success').style.display = 'block';
+            setTimeout(() => {
+                document.getElementById('emotion-success').style.display = 'none';
+            }, 3000);
+
+            // Update Save button state
+            updateSaveButtonState();
+        }
+    </script>
+    <script>
+        // Global function for View History navigation (direct onclick fallback)
+        function goToHistory() {
+            console.log('goToHistory called');
+            window.location.href = '/history';
+        }
+
+        // Attach robust handler for View History button on the main page
+        (function() {
+            try {
+                const viewBtn = document.getElementById('view-history-btn');
+                if (viewBtn) {
+                    console.log('View History button found, attaching listener');
+                    viewBtn.addEventListener('click', (e) => {
+                        console.log('View History click event triggered');
+                        e.preventDefault();
+                        e.stopPropagation();
+                        goToHistory();
+                    });
+                    // Also set onclick as fallback
+                    viewBtn.onclick = function() {
+                        console.log('View History onclick fallback triggered');
+                        goToHistory();
+                        return false;
+                    };
+                } else {
+                    console.warn('View History button not found in DOM');
+                }
+            } catch (err) {
+                console.error('Error attaching view-history handler', err);
+            }
+        })();
+    </script>
+</body>
+</html>

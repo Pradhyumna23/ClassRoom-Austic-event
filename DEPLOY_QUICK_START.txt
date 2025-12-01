@@ -1,0 +1,50 @@
+#!/bin/bash
+# Quick start guide for Render deployment
+
+echo "==================================================================="
+echo "🚀 Classroom AI - Render Deployment Quick Start"
+echo "==================================================================="
+
+echo ""
+echo "Step 1: Remove virtual environment from git history..."
+echo "$ git rm -r --cached myenv/ --force"
+echo "$ git commit -m 'Remove virtual environment from git tracking'"
+
+echo ""
+echo "Step 2: Verify .gitignore excludes myenv..."
+echo "$ cat .gitignore | grep myenv"
+
+echo ""
+echo "Step 3: Check what will be pushed..."
+echo "$ git status"
+
+echo ""
+echo "Step 4: Push to GitHub..."
+echo "$ git push -u origin main"
+
+echo ""
+echo "Step 5: Go to https://render.com"
+echo "  - Sign up with GitHub"
+echo "  - Create New Web Service"
+echo "  - Select ClassRoom-Austic-event repository"
+echo "  - Configure:"
+echo "    • Name: classroom-ai"
+echo "    • Environment: Python 3"
+echo "    • Build: pip install -r requirements.txt"
+echo "    • Start: gunicorn app:app"
+echo ""
+echo "Step 6: Add Environment Variables in Render:"
+echo "  - MONGO_URI: mongodb+srv://user:pass@cluster.mongodb.net/classroom_db"
+echo "  - FLASK_ENV: production"
+echo "  - DEBUG: False"
+
+echo ""
+echo "Step 7: Deploy!"
+echo "  - Render will automatically start deployment"
+echo "  - Check logs for progress"
+echo "  - Your app will be live in ~5 minutes"
+
+echo ""
+echo "==================================================================="
+echo "✅ Your app will be available at: https://classroom-ai.onrender.com"
+echo "==================================================================="
