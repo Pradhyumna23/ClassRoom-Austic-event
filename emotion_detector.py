@@ -120,8 +120,13 @@ class ClassroomEmotionAnalyzer:
             print(f"[DEBUG] Detected {total_faces} faces in classroom image")
 
             individual_results = []
-            emotion_counts = {v: 0 for v in EMOTION_MAP.values()}
-            emotion_scores = {v: [] for v in EMOTION_MAP.values()}
+            emotion_counts = {}  # Initialize as empty dict to avoid hardcoded emotions
+            emotion_scores = {}  # Initialize as empty dict
+            
+            # Initialize emotion tracking dicts with all possible emotions
+            for emotion in set(EMOTION_MAP.values()):
+                emotion_counts[emotion] = 0
+                emotion_scores[emotion] = []
 
             for idx, f in enumerate(faces):
                 x, y, w, h = f['x'], f['y'], f['width'], f['height']
@@ -146,25 +151,34 @@ class ClassroomEmotionAnalyzer:
                         'raw_emotion': dominant,
                         'classroom_emotion': mapped,
                         'confidence': float(max(raw.values())) if raw else 0.0,
-                        'all_emotions': raw
+                        'all_emotions': {str(k): float(v) for k, v in raw.items()}
                     })
 
                     emotion_counts[mapped] = emotion_counts.get(mapped, 0) + 1
-                    # accumulate mapped raw scores for averaging
-                    for r_em, score in raw.items():
-                        mapped_r = EMOTION_MAP.get(r_em, r_em)
-                        emotion_scores[mapped_r].append(score)
+                    
+                    # Store the dominant emotion's confidence score for averaging
+                    if mapped not in emotion_scores:
+                        emotion_scores[mapped] = []
+                    emotion_scores[mapped].append(float(max(raw.values())) if raw else 0.0)
+                    
                 except Exception as e:
                     print(f"[ERROR] Error analyzing detected face {idx+1}: {e}")
-                    import traceback
-                    traceback.print_exc()
                     continue
 
             # Aggregate averages and percentages
             total_analyzed = len(individual_results)
+            if total_analyzed == 0:
+                return {
+                    'status': 'error',
+                    'error': 'No faces could be analyzed',
+                    'total_faces_detected': total_faces,
+                    'total_faces_analyzed': 0
+                }
+            
             avg_emotions = {}
             percentages = {}
-            for emo in emotion_scores:
+            
+            for emo in emotion_scores.keys():
                 vals = emotion_scores.get(emo, [])
                 if vals:
                     avg = float(np.mean(vals))
@@ -173,10 +187,14 @@ class ClassroomEmotionAnalyzer:
                 avg_emotions[emo] = round(avg, 2)
                 percentages[emo] = round((emotion_counts.get(emo, 0) / total_analyzed * 100) if total_analyzed > 0 else 0.0, 2)
 
-            dominant = max(avg_emotions.items(), key=lambda x: x[1])[0] if avg_emotions else 'unknown'
+            # Sort by average emotion score
+            sorted_avg_emotions = dict(sorted(avg_emotions.items(), key=lambda x: x[1], reverse=True))
+            sorted_percentages = dict(sorted(percentages.items(), key=lambda x: x[1], reverse=True))
+            
+            dominant = list(sorted_avg_emotions.keys())[0] if sorted_avg_emotions else 'unknown'
 
             print(f"[DEBUG] Classroom analysis complete: {total_analyzed} faces analyzed, dominant emotion: {dominant}")
-            print(f"[DEBUG] Average emotions: {avg_emotions}")
+            print(f"[DEBUG] Average emotions: {sorted_avg_emotions}")
             print(f"[DEBUG] Emotion counts: {emotion_counts}")
 
             result = {
@@ -185,8 +203,8 @@ class ClassroomEmotionAnalyzer:
                 'total_faces_analyzed': total_analyzed,
                 'individual_emotions': individual_results,
                 'emotions_summary': emotion_counts,
-                'emotions_percentages': percentages,
-                'average_emotions': avg_emotions,
+                'emotions_percentages': sorted_percentages,
+                'average_emotions': sorted_avg_emotions,
                 'dominant_emotion': dominant
             }
             return result
