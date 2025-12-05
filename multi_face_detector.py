@@ -73,7 +73,12 @@ class RetinaFaceWrapper:
             return []
 
 
-def boxes_overlap(box1: Tuple[int, int, int, int], box2: Tuple[int, int, int, int], threshold: float = 0.3) -> bool:
+def boxes_overlap(box1: Tuple[int, int, int, int], box2: Tuple[int, int, int, int], threshold: float = 0.1) -> bool:
+    """
+    Calculate Intersection over Union (IoU) between two boxes.
+    A lower threshold (0.1) means only very overlapping boxes are considered duplicates.
+    This prevents distinct faces from being merged.
+    """
     x1, y1, w1, h1 = box1
     x2, y2, w2, h2 = box2
     inter_x1 = max(x1, x2)
@@ -89,28 +94,49 @@ def boxes_overlap(box1: Tuple[int, int, int, int], box2: Tuple[int, int, int, in
     if union <= 0:
         return False
     overlap = inter_area / union
+    print(f"[DEBUG] IoU between boxes: {overlap:.3f}, threshold: {threshold}")
     return overlap > threshold
 
 
 class EnsembleFaceDetector:
-    """Combine MediaPipe + RetinaFace (DeepFace) detections and merge duplicates."""
+    """
+    Combine MediaPipe + RetinaFace (DeepFace) detections and merge duplicates.
+    Strategy: Use RetinaFace as primary (more accurate for multiple faces), 
+    supplement with MediaPipe detections that aren't already found.
+    """
     def __init__(self):
-        self.mpd = MediaPipeFaceDetector()
+        self.mpd = MediaPipeFaceDetector(min_detection_confidence=0.6)
+        print("[DEBUG] EnsembleFaceDetector initialized")
 
     def detect_faces(self, image) -> List[Dict]:
-        mp_faces = self.mpd.detect_faces(image)
+        """
+        Detect faces using both MediaPipe and RetinaFace, merge results intelligently.
+        """
+        # Get detections from both methods
         rf_faces = RetinaFaceWrapper.detect_faces(image)
-
-        # merge, prefer MediaPipe boxes but add RetinaFace boxes that are not duplicates
-        merged = list(mp_faces)
-        for rf in rf_faces:
-            rf_box = (rf['x'], rf['y'], rf['width'], rf['height'])
-            duplicate = False
-            for mp in mp_faces:
-                mp_box = (mp['x'], mp['y'], mp['width'], mp['height'])
-                if boxes_overlap(mp_box, rf_box):
-                    duplicate = True
+        mp_faces = self.mpd.detect_faces(image)
+        
+        print(f"[DEBUG] RetinaFace detected {len(rf_faces)} faces")
+        print(f"[DEBUG] MediaPipe detected {len(mp_faces)} faces")
+        
+        # Start with RetinaFace detections (primary source - more accurate for multiple faces)
+        merged = list(rf_faces)
+        
+        # Add MediaPipe faces that don't overlap with RetinaFace detections
+        for mp in mp_faces:
+            mp_box = (mp['x'], mp['y'], mp['width'], mp['height'])
+            is_duplicate = False
+            
+            for rf in rf_faces:
+                rf_box = (rf['x'], rf['y'], rf['width'], rf['height'])
+                if boxes_overlap(mp_box, rf_box, threshold=0.1):
+                    is_duplicate = True
+                    print(f"[DEBUG] MediaPipe face overlaps with RetinaFace - skipping duplicate")
                     break
-            if not duplicate:
-                merged.append(rf)
+            
+            if not is_duplicate:
+                print(f"[DEBUG] Adding new MediaPipe face (not detected by RetinaFace)")
+                merged.append(mp)
+        
+        print(f"[DEBUG] Total faces after merge: {len(merged)}")
         return merged
