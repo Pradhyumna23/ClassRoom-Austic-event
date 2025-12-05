@@ -11,16 +11,17 @@ from typing import List, Dict, Tuple
 
 if HAS_MEDIAPIPE:
     class MediaPipeFaceDetector:
-        """Fast face detection using MediaPipe (CPU-friendly). Returns list of bounding boxes."""
+        """Fast face detection using MediaPipe - good for varying distances."""
         def __init__(self, min_detection_confidence: float = 0.5):
             self.mp_face_detection = mp.solutions.face_detection
+            # model_selection=1 is more robust for faces at different distances
             self.detector = self.mp_face_detection.FaceDetection(
                 model_selection=1,
                 min_detection_confidence=min_detection_confidence
             )
 
         def detect_faces(self, image) -> List[Dict]:
-            """Detect faces in a BGR image (numpy array). Returns list of dicts with x,y,width,height,confidence."""
+            """Detect faces in a BGR image - handles multiple distances well."""
             if image is None:
                 return []
 
@@ -29,19 +30,30 @@ if HAS_MEDIAPIPE:
             faces = []
             if results.detections:
                 h, w, _ = image.shape
-                for det in results.detections:
+                for idx, det in enumerate(results.detections):
                     bbox = det.location_data.relative_bounding_box
                     x = int(max(0, bbox.xmin * w))
                     y = int(max(0, bbox.ymin * h))
                     width = int(min(w - x, bbox.width * w))
                     height = int(min(h - y, bbox.height * h))
-                    # add small padding
-                    pad = 8
+                    
+                    # Add padding - slightly larger for better emotion detection
+                    pad = 12
                     x = max(0, x - pad)
                     y = max(0, y - pad)
                     width = min(w - x, width + pad * 2)
                     height = min(h - y, height + pad * 2)
-                    faces.append({'x': x, 'y': y, 'width': width, 'height': height, 'confidence': float(det.score[0]) if det.score else 0.0})
+                    
+                    confidence = float(det.score[0]) if det.score else 0.0
+                    faces.append({
+                        'x': x, 
+                        'y': y, 
+                        'width': width, 
+                        'height': height, 
+                        'confidence': confidence,
+                        'detector': 'mediapipe'
+                    })
+                    print(f"[DEBUG] MediaPipe face #{idx+1}: size {width}x{height}, confidence {confidence:.2f}")
             return faces
 else:
     # Fallback stub so the module can be imported when mediapipe is not available.
@@ -54,23 +66,33 @@ else:
 
 
 class RetinaFaceWrapper:
-    """Wrap DeepFace.extract_faces (RetinaFace) to return bounding boxes for merging."""
+    """Wrap DeepFace.extract_faces (RetinaFace) - excellent at detecting faces at various distances."""
     @staticmethod
     def detect_faces(image) -> List[Dict]:
-        # DeepFace.extract_faces with RetinaFace backend - good for frontal faces
+        """RetinaFace is robust to face size variations (depth differences)."""
         try:
-            # Lower confidence threshold to catch more faces, including partial/angled ones
+            # RetinaFace automatically handles scale variations well
             faces = DeepFace.extract_faces(img_path=image, detector_backend='retinaface', 
                                           enforce_detection=False)
             results = []
-            for f in faces:
+            for idx, f in enumerate(faces):
                 area = f.get('facial_area', {})
                 x = int(area.get('x', 0))
                 y = int(area.get('y', 0))
                 w = int(area.get('w', 0))
                 h = int(area.get('h', 0))
-                results.append({'x': x, 'y': y, 'width': w, 'height': h, 'confidence': 0.85, 'detector': 'retinaface'})
-            print(f"[DEBUG] RetinaFace detected {len(results)} faces")
+                
+                results.append({
+                    'x': x, 
+                    'y': y, 
+                    'width': w, 
+                    'height': h, 
+                    'confidence': 0.90,  # RetinaFace is very reliable
+                    'detector': 'retinaface'
+                })
+                print(f"[DEBUG] RetinaFace face #{idx+1}: size {w}x{h}, confidence 0.90")
+            
+            print(f"[DEBUG] RetinaFace detected {len(results)} faces total")
             return results
         except Exception as e:
             print(f"[DEBUG] RetinaFace detection error: {e}")
@@ -78,7 +100,7 @@ class RetinaFaceWrapper:
 
 
 class OpenCVFaceDetector:
-    """Use OpenCV Haar Cascade for additional face detection (good for profile/angled faces)."""
+    """Use OpenCV Haar Cascade for detection at MULTIPLE SCALES (near and far faces)."""
     def __init__(self):
         # Load multiple cascade classifiers for better coverage
         self.cascade_frontal = cv2.CascadeClassifier(
@@ -87,10 +109,10 @@ class OpenCVFaceDetector:
             cv2.data.haarcascades + 'haarcascade_frontalface_alt.xml')
         self.cascade_default = cv2.CascadeClassifier(
             cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-        print(f"[DEBUG] Loaded 3 Haar Cascade variants for multi-angle detection")
+        print(f"[DEBUG] Loaded 3 Haar Cascade variants for multi-scale detection")
     
     def detect_faces(self, image) -> List[Dict]:
-        """Detect faces using multiple Haar Cascades - aggressive for different angles and lighting."""
+        """Detect faces at MULTIPLE SCALES using pyramid approach - captures near and far faces."""
         try:
             # Convert to grayscale
             if len(image.shape) == 3:
@@ -98,46 +120,84 @@ class OpenCVFaceDetector:
             else:
                 gray = image
             
-            # Equalize histogram for better contrast (helps with poor lighting)
+            # Equalize histogram for better contrast
             gray = cv2.equalizeHist(gray)
             
             all_detected = {}  # Use dict to deduplicate by position
             
-            # Try all three cascades with aggressive parameters
-            cascades = [
-                ('alt2', self.cascade_frontal, {'scaleFactor': 1.03, 'minNeighbors': 3}),
-                ('alt', self.cascade_alt, {'scaleFactor': 1.05, 'minNeighbors': 4}),
-                ('default', self.cascade_default, {'scaleFactor': 1.08, 'minNeighbors': 5})
+            # **MULTI-SCALE DETECTION**: Process at different image resolutions
+            # This captures faces that are far (small) and near (large) to camera
+            scales = [
+                (1.0, 'original'),      # Original size - for nearby faces
+                (0.75, 'medium'),       # 75% - medium distance faces
+                (0.5, 'small'),         # 50% - far away faces (half resolution)
+                (1.5, 'large')          # 150% - very close faces (enlarged)
             ]
             
-            for name, cascade, params in cascades:
-                faces = cascade.detectMultiScale(
-                    gray,
-                    scaleFactor=params['scaleFactor'],
-                    minNeighbors=params['minNeighbors'],
-                    minSize=(25, 25),  # Lower minimum size to catch distant faces
-                    maxSize=(600, 600),
-                    flags=cv2.CASCADE_SCALE_IMAGE
-                )
+            for scale, scale_name in scales:
+                if scale != 1.0:
+                    h, w = gray.shape
+                    scaled_gray = cv2.resize(gray, (int(w * scale), int(h * scale)))
+                else:
+                    scaled_gray = gray
                 
-                print(f"[DEBUG] Haar {name} detected {len(faces)} faces")
+                print(f"[DEBUG] Scanning at {scale_name} scale ({int(scaled_gray.shape[1])}x{int(scaled_gray.shape[0])})")
                 
-                # Add detections to dict (key is rounded position to avoid duplicates)
-                for (x, y, w, h) in faces:
-                    # Round to nearest 10 pixels to group similar detections
-                    key = (round(x/10)*10, round(y/10)*10, round(w/10)*10, round(h/10)*10)
-                    if key not in all_detected or w * h > all_detected[key][2] * all_detected[key][3]:
-                        all_detected[key] = (x, y, w, h)
+                # Try all three cascades with aggressive parameters tuned for this scale
+                cascade_configs = [
+                    ('alt2', self.cascade_frontal, {'scaleFactor': 1.02, 'minNeighbors': 2}),
+                    ('alt', self.cascade_alt, {'scaleFactor': 1.05, 'minNeighbors': 3}),
+                    ('default', self.cascade_default, {'scaleFactor': 1.08, 'minNeighbors': 4})
+                ]
+                
+                for cascade_name, cascade, params in cascade_configs:
+                    try:
+                        # Adjust minSize based on scale
+                        min_size = int(20 * scale)
+                        max_size = int(500 * scale)
+                        
+                        faces = cascade.detectMultiScale(
+                            scaled_gray,
+                            scaleFactor=params['scaleFactor'],
+                            minNeighbors=params['minNeighbors'],
+                            minSize=(max(10, min_size), max(10, min_size)),
+                            maxSize=(max_size, max_size),
+                            flags=cv2.CASCADE_SCALE_IMAGE
+                        )
+                        
+                        print(f"[DEBUG]   {cascade_name}: detected {len(faces)} faces")
+                        
+                        # Scale back to original coordinates
+                        for (x, y, w, h) in faces:
+                            if scale != 1.0:
+                                x = int(x / scale)
+                                y = int(y / scale)
+                                w = int(w / scale)
+                                h = int(h / scale)
+                            
+                            # Round to nearest 8 pixels to group very similar detections
+                            key = (round(x/8)*8, round(y/8)*8, round(w/8)*8, round(h/8)*8)
+                            
+                            # Keep detection if new or if it's larger than existing
+                            if key not in all_detected or (w * h) > (all_detected[key][2] * all_detected[key][3]):
+                                all_detected[key] = (x, y, w, h)
+                                
+                    except Exception as e:
+                        print(f"[DEBUG]   {cascade_name} at scale {scale_name} failed: {e}")
+                        continue
             
             results = []
             for (x, y, w, h) in all_detected.values():
                 results.append({
-                    'x': x, 'y': y, 'width': w, 'height': h, 
-                    'confidence': 0.75,  # Slightly lower confidence for Haar
+                    'x': max(0, x), 
+                    'y': max(0, y), 
+                    'width': max(1, w), 
+                    'height': max(1, h), 
+                    'confidence': 0.75,
                     'detector': 'haar_cascade'
                 })
             
-            print(f"[DEBUG] Haar Cascade (deduplicated) detected {len(results)} unique faces")
+            print(f"[DEBUG] Haar Cascade (multi-scale deduplicated) detected {len(results)} unique faces")
             return results
         except Exception as e:
             print(f"[DEBUG] Haar Cascade detection error: {e}")
