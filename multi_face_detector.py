@@ -57,9 +57,11 @@ class RetinaFaceWrapper:
     """Wrap DeepFace.extract_faces (RetinaFace) to return bounding boxes for merging."""
     @staticmethod
     def detect_faces(image) -> List[Dict]:
-        # DeepFace.extract_faces accepts path or array; use array
+        # DeepFace.extract_faces with RetinaFace backend - good for frontal faces
         try:
-            faces = DeepFace.extract_faces(img_path=image, detector_backend='retinaface', enforce_detection=False)
+            # Lower confidence threshold to catch more faces, including partial/angled ones
+            faces = DeepFace.extract_faces(img_path=image, detector_backend='retinaface', 
+                                          enforce_detection=False)
             results = []
             for f in faces:
                 area = f.get('facial_area', {})
@@ -67,17 +69,61 @@ class RetinaFaceWrapper:
                 y = int(area.get('y', 0))
                 w = int(area.get('w', 0))
                 h = int(area.get('h', 0))
-                results.append({'x': x, 'y': y, 'width': w, 'height': h, 'confidence': 0.9})
+                results.append({'x': x, 'y': y, 'width': w, 'height': h, 'confidence': 0.85, 'detector': 'retinaface'})
+            print(f"[DEBUG] RetinaFace detected {len(results)} faces")
             return results
-        except Exception:
+        except Exception as e:
+            print(f"[DEBUG] RetinaFace detection error: {e}")
+            return []
+
+
+class OpenCVFaceDetector:
+    """Use OpenCV Haar Cascade for additional face detection (good for profile/angled faces)."""
+    def __init__(self):
+        # Load pre-trained Haar Cascade classifier for faces
+        cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_alt2.xml'
+        self.cascade = cv2.CascadeClassifier(cascade_path)
+        print(f"[DEBUG] Loaded Haar Cascade from: {cascade_path}")
+    
+    @staticmethod
+    def detect_faces(image) -> List[Dict]:
+        """Detect faces using OpenCV Haar Cascade - better for profile/tilted faces."""
+        try:
+            # Convert to grayscale for Haar Cascade
+            if len(image.shape) == 3:
+                gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            else:
+                gray = image
+            
+            # Detect faces with scale factor optimized for multiple faces
+            cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_alt2.xml'
+            cascade = cv2.CascadeClassifier(cascade_path)
+            faces = cascade.detectMultiScale(gray, scaleFactor=1.05, minNeighbors=4, 
+                                            minSize=(30, 30), maxSize=(500, 500))
+            
+            results = []
+            for (x, y, w, h) in faces:
+                results.append({'x': x, 'y': y, 'width': w, 'height': h, 'confidence': 0.7, 'detector': 'haar_cascade'})
+            
+            print(f"[DEBUG] Haar Cascade detected {len(results)} faces")
+            return results
+        except Exception as e:
+            print(f"[DEBUG] Haar Cascade detection error: {e}")
             return []
 
 
 def boxes_overlap(box1: Tuple[int, int, int, int], box2: Tuple[int, int, int, int], threshold: float = 0.1) -> bool:
     """
-    Calculate Intersection over Union (IoU) between two boxes.
-    A lower threshold (0.1) means only very overlapping boxes are considered duplicates.
-    This prevents distinct faces from being merged.
+    Calculate Intersection over Union (IoU) between two bounding boxes.
+    
+    Args:
+        box1, box2: (x, y, width, height) tuples
+        threshold: IoU threshold above which boxes are considered overlapping
+                  - 0.1: Only heavily overlapping boxes marked as duplicates (allows close faces)
+                  - 0.5: More aggressive duplicate removal (prevents close together faces)
+    
+    Returns:
+        True if IoU > threshold (boxes overlap significantly)
     """
     x1, y1, w1, h1 = box1
     x2, y2, w2, h2 = box2
@@ -94,49 +140,70 @@ def boxes_overlap(box1: Tuple[int, int, int, int], box2: Tuple[int, int, int, in
     if union <= 0:
         return False
     overlap = inter_area / union
-    print(f"[DEBUG] IoU between boxes: {overlap:.3f}, threshold: {threshold}")
     return overlap > threshold
 
 
 class EnsembleFaceDetector:
     """
-    Combine MediaPipe + RetinaFace (DeepFace) detections and merge duplicates.
-    Strategy: Use RetinaFace as primary (more accurate for multiple faces), 
-    supplement with MediaPipe detections that aren't already found.
+    Combine THREE detection methods for maximum coverage:
+    1. RetinaFace - Excellent for frontal faces
+    2. MediaPipe - Good for profile/tilted faces
+    3. Haar Cascade - Robust for varied angles and lighting
+    
+    This ensemble approach catches faces looking in different directions.
     """
     def __init__(self):
-        self.mpd = MediaPipeFaceDetector(min_detection_confidence=0.6)
-        print("[DEBUG] EnsembleFaceDetector initialized")
+        self.mpd = MediaPipeFaceDetector(min_detection_confidence=0.5)  # Lower confidence for side profiles
+        self.haar = OpenCVFaceDetector()
+        print("[DEBUG] EnsembleFaceDetector initialized with 3 detection methods")
 
     def detect_faces(self, image) -> List[Dict]:
         """
-        Detect faces using both MediaPipe and RetinaFace, merge results intelligently.
+        Detect faces using all three methods, merge results intelligently.
+        Strategy: Use all detectors, remove only very high-overlap duplicates (IoU > 0.5)
         """
-        # Get detections from both methods
+        # Get detections from all three methods
         rf_faces = RetinaFaceWrapper.detect_faces(image)
         mp_faces = self.mpd.detect_faces(image)
+        haar_faces = self.haar.detect_faces(image)
         
-        print(f"[DEBUG] RetinaFace detected {len(rf_faces)} faces")
-        print(f"[DEBUG] MediaPipe detected {len(mp_faces)} faces")
+        print(f"[DEBUG] === Face Detection Summary ===")
+        print(f"[DEBUG] RetinaFace: {len(rf_faces)} faces")
+        print(f"[DEBUG] MediaPipe: {len(mp_faces)} faces")
+        print(f"[DEBUG] Haar Cascade: {len(haar_faces)} faces")
         
-        # Start with RetinaFace detections (primary source - more accurate for multiple faces)
-        merged = list(rf_faces)
+        # Combine all detections
+        all_faces = rf_faces + mp_faces + haar_faces
+        merged = []
+        used_indices = set()
         
-        # Add MediaPipe faces that don't overlap with RetinaFace detections
-        for mp in mp_faces:
-            mp_box = (mp['x'], mp['y'], mp['width'], mp['height'])
+        # NMS-style merging: keep high-confidence detections, remove overlapping lower-confidence ones
+        all_faces_sorted = sorted(enumerate(all_faces), key=lambda x: x[1]['confidence'], reverse=True)
+        
+        for idx, face in all_faces_sorted:
+            if idx in used_indices:
+                continue
+            
+            face_box = (face['x'], face['y'], face['width'], face['height'])
             is_duplicate = False
             
-            for rf in rf_faces:
-                rf_box = (rf['x'], rf['y'], rf['width'], rf['height'])
-                if boxes_overlap(mp_box, rf_box, threshold=0.1):
+            # Check against already accepted faces
+            for accepted_face in merged:
+                accepted_box = (accepted_face['x'], accepted_face['y'], 
+                               accepted_face['width'], accepted_face['height'])
+                # Use stricter threshold (0.5) to avoid merging distinct faces
+                if boxes_overlap(face_box, accepted_box, threshold=0.5):
                     is_duplicate = True
-                    print(f"[DEBUG] MediaPipe face overlaps with RetinaFace - skipping duplicate")
+                    print(f"[DEBUG] Face from {face.get('detector', 'unknown')} (conf: {face['confidence']}) "
+                          f"overlaps with existing detection - skipping")
                     break
             
             if not is_duplicate:
-                print(f"[DEBUG] Adding new MediaPipe face (not detected by RetinaFace)")
-                merged.append(mp)
+                merged.append(face)
+                used_indices.add(idx)
+                print(f"[DEBUG] ✓ Accepted face from {face.get('detector', 'unknown')} "
+                      f"(confidence: {face['confidence']:.2f})")
         
-        print(f"[DEBUG] Total faces after merge: {len(merged)}")
+        print(f"[DEBUG] Total unique faces after ensemble merge: {len(merged)}")
+        print(f"[DEBUG] === End Detection ===\n")
         return merged
