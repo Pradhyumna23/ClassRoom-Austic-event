@@ -80,35 +80,69 @@ class RetinaFaceWrapper:
 class OpenCVFaceDetector:
     """Use OpenCV Haar Cascade for additional face detection (good for profile/angled faces)."""
     def __init__(self):
-        # Load pre-trained Haar Cascade classifier for faces
-        cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_alt2.xml'
-        self.cascade = cv2.CascadeClassifier(cascade_path)
-        print(f"[DEBUG] Loaded Haar Cascade from: {cascade_path}")
+        # Load multiple cascade classifiers for better coverage
+        self.cascade_frontal = cv2.CascadeClassifier(
+            cv2.data.haarcascades + 'haarcascade_frontalface_alt2.xml')
+        self.cascade_alt = cv2.CascadeClassifier(
+            cv2.data.haarcascades + 'haarcascade_frontalface_alt.xml')
+        self.cascade_default = cv2.CascadeClassifier(
+            cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+        print(f"[DEBUG] Loaded 3 Haar Cascade variants for multi-angle detection")
     
-    @staticmethod
-    def detect_faces(image) -> List[Dict]:
-        """Detect faces using OpenCV Haar Cascade - better for profile/tilted faces."""
+    def detect_faces(self, image) -> List[Dict]:
+        """Detect faces using multiple Haar Cascades - aggressive for different angles and lighting."""
         try:
-            # Convert to grayscale for Haar Cascade
+            # Convert to grayscale
             if len(image.shape) == 3:
                 gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
             else:
                 gray = image
             
-            # Detect faces with scale factor optimized for multiple faces
-            cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_alt2.xml'
-            cascade = cv2.CascadeClassifier(cascade_path)
-            faces = cascade.detectMultiScale(gray, scaleFactor=1.05, minNeighbors=4, 
-                                            minSize=(30, 30), maxSize=(500, 500))
+            # Equalize histogram for better contrast (helps with poor lighting)
+            gray = cv2.equalizeHist(gray)
+            
+            all_detected = {}  # Use dict to deduplicate by position
+            
+            # Try all three cascades with aggressive parameters
+            cascades = [
+                ('alt2', self.cascade_frontal, {'scaleFactor': 1.03, 'minNeighbors': 3}),
+                ('alt', self.cascade_alt, {'scaleFactor': 1.05, 'minNeighbors': 4}),
+                ('default', self.cascade_default, {'scaleFactor': 1.08, 'minNeighbors': 5})
+            ]
+            
+            for name, cascade, params in cascades:
+                faces = cascade.detectMultiScale(
+                    gray,
+                    scaleFactor=params['scaleFactor'],
+                    minNeighbors=params['minNeighbors'],
+                    minSize=(25, 25),  # Lower minimum size to catch distant faces
+                    maxSize=(600, 600),
+                    flags=cv2.CASCADE_SCALE_IMAGE
+                )
+                
+                print(f"[DEBUG] Haar {name} detected {len(faces)} faces")
+                
+                # Add detections to dict (key is rounded position to avoid duplicates)
+                for (x, y, w, h) in faces:
+                    # Round to nearest 10 pixels to group similar detections
+                    key = (round(x/10)*10, round(y/10)*10, round(w/10)*10, round(h/10)*10)
+                    if key not in all_detected or w * h > all_detected[key][2] * all_detected[key][3]:
+                        all_detected[key] = (x, y, w, h)
             
             results = []
-            for (x, y, w, h) in faces:
-                results.append({'x': x, 'y': y, 'width': w, 'height': h, 'confidence': 0.7, 'detector': 'haar_cascade'})
+            for (x, y, w, h) in all_detected.values():
+                results.append({
+                    'x': x, 'y': y, 'width': w, 'height': h, 
+                    'confidence': 0.75,  # Slightly lower confidence for Haar
+                    'detector': 'haar_cascade'
+                })
             
-            print(f"[DEBUG] Haar Cascade detected {len(results)} faces")
+            print(f"[DEBUG] Haar Cascade (deduplicated) detected {len(results)} unique faces")
             return results
         except Exception as e:
             print(f"[DEBUG] Haar Cascade detection error: {e}")
+            import traceback
+            traceback.print_exc()
             return []
 
 
@@ -160,7 +194,7 @@ class EnsembleFaceDetector:
     def detect_faces(self, image) -> List[Dict]:
         """
         Detect faces using all three methods, merge results intelligently.
-        Strategy: Use all detectors, remove only very high-overlap duplicates (IoU > 0.5)
+        Strategy: Aggressive detection - keep all unique faces, only remove near-exact duplicates
         """
         # Get detections from all three methods
         rf_faces = RetinaFaceWrapper.detect_faces(image)
@@ -177,8 +211,8 @@ class EnsembleFaceDetector:
         merged = []
         used_indices = set()
         
-        # NMS-style merging: keep high-confidence detections, remove overlapping lower-confidence ones
-        all_faces_sorted = sorted(enumerate(all_faces), key=lambda x: x[1]['confidence'], reverse=True)
+        # Sort by confidence (prefer higher confidence detections)
+        all_faces_sorted = sorted(enumerate(all_faces), key=lambda x: x[1].get('confidence', 0.5), reverse=True)
         
         for idx, face in all_faces_sorted:
             if idx in used_indices:
@@ -191,19 +225,28 @@ class EnsembleFaceDetector:
             for accepted_face in merged:
                 accepted_box = (accepted_face['x'], accepted_face['y'], 
                                accepted_face['width'], accepted_face['height'])
-                # Use stricter threshold (0.5) to avoid merging distinct faces
-                if boxes_overlap(face_box, accepted_box, threshold=0.5):
+                
+                # Use VERY strict threshold (0.6-0.7) to only merge near-exact duplicates
+                # This prevents merging faces that are close together
+                if boxes_overlap(face_box, accepted_box, threshold=0.65):
                     is_duplicate = True
-                    print(f"[DEBUG] Face from {face.get('detector', 'unknown')} (conf: {face['confidence']}) "
-                          f"overlaps with existing detection - skipping")
+                    detector1 = face.get('detector', 'unknown')
+                    detector2 = accepted_face.get('detector', 'unknown')
+                    print(f"[DEBUG] Face from {detector1} (conf: {face.get('confidence', 0):.2f}) "
+                          f"is duplicate of {detector2} - keeping {detector2}")
                     break
             
             if not is_duplicate:
                 merged.append(face)
                 used_indices.add(idx)
-                print(f"[DEBUG] ✓ Accepted face from {face.get('detector', 'unknown')} "
-                      f"(confidence: {face['confidence']:.2f})")
+                print(f"[DEBUG] ✓ Accepted face #{len(merged)} from {face.get('detector', 'unknown')} "
+                      f"at ({face['x']}, {face['y']}) size {face['width']}x{face['height']} "
+                      f"(confidence: {face.get('confidence', 0):.2f})")
         
-        print(f"[DEBUG] Total unique faces after ensemble merge: {len(merged)}")
+        print(f"[DEBUG] Total UNIQUE faces after ensemble: {len(merged)}")
         print(f"[DEBUG] === End Detection ===\n")
+        
+        # Sort by position (top-left to bottom-right) for consistency
+        merged = sorted(merged, key=lambda f: (f['y'], f['x']))
+        
         return merged
