@@ -36,6 +36,70 @@ EMOTION_MAP = {
     'disgust': 'distracted'        # Disengaged, repelled
 }
 
+def draw_face_detection_circles(image_path: str, faces: list, output_path: str = None) -> str:
+    """
+    Draw circles and labels around detected faces in the image.
+    
+    Args:
+        image_path: Path to the original image
+        faces: List of detected face dictionaries with x, y, width, height
+        output_path: Where to save the annotated image (default: temp_marked_image.jpg)
+    
+    Returns:
+        Path to the annotated image
+    """
+    if output_path is None:
+        output_path = 'temp_marked_image.jpg'
+    
+    try:
+        img = cv2.imread(image_path)
+        if img is None:
+            print(f"[ERROR] Could not read image: {image_path}")
+            return None
+        
+        # Draw circles around each detected face
+        for idx, face in enumerate(faces):
+            x = face['x']
+            y = face['y']
+            w = face['width']
+            h = face['height']
+            
+            # Calculate circle center and radius
+            center_x = x + w // 2
+            center_y = y + h // 2
+            radius = max(w, h) // 2 + 10
+            
+            # Draw circle (green color for detected faces)
+            color = (0, 255, 0)  # BGR format: Green
+            thickness = 3
+            cv2.circle(img, (center_x, center_y), radius, color, thickness)
+            
+            # Draw face number label
+            label = f"Person {idx + 1}"
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            font_scale = 0.7
+            text_thickness = 2
+            
+            # Put text at the top of circle
+            text_x = center_x - 50
+            text_y = center_y - radius - 10
+            cv2.putText(img, label, (text_x, text_y), font, font_scale, color, text_thickness)
+            
+            # Draw bounding box as well (optional, for clarity)
+            cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 255), 2)  # Cyan box
+        
+        # Save the annotated image
+        cv2.imwrite(output_path, img)
+        print(f"[DEBUG] Marked image saved to {output_path}")
+        return output_path
+    
+    except Exception as e:
+        print(f"[ERROR] Error drawing detection circles: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+
 def load_emotion_model():
     """
     Load the DeepFace emotion detection model.
@@ -212,6 +276,9 @@ class ClassroomEmotionAnalyzer:
             print(f"[DEBUG] Average emotions: {sorted_avg_emotions}")
             print(f"[DEBUG] Emotion counts: {emotion_counts}")
 
+            # Generate marked image showing detected faces
+            marked_image_path = draw_face_detection_circles(image_path, faces, 'temp_marked_classroom.jpg')
+
             result = {
                 'status': 'success',
                 'total_faces_detected': total_faces,
@@ -220,7 +287,8 @@ class ClassroomEmotionAnalyzer:
                 'emotions_summary': emotion_counts,
                 'emotions_percentages': sorted_percentages,
                 'average_emotions': sorted_avg_emotions,
-                'dominant_emotion': dominant
+                'dominant_emotion': dominant,
+                'marked_image_path': marked_image_path
             }
             return convert_to_json_serializable(result)
         except Exception as e:
