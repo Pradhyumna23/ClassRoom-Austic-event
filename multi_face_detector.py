@@ -12,7 +12,7 @@ from typing import List, Dict, Tuple
 if HAS_MEDIAPIPE:
     class MediaPipeFaceDetector:
         """Fast face detection using MediaPipe - good for varying distances."""
-        def __init__(self, min_detection_confidence: float = 0.5):
+        def __init__(self, min_detection_confidence: float = 0.7):
             self.mp_face_detection = mp.solutions.face_detection
             # model_selection=1 is more robust for faces at different distances
             self.detector = self.mp_face_detection.FaceDetection(
@@ -129,9 +129,7 @@ class OpenCVFaceDetector:
             # This captures faces that are far (small) and near (large) to camera
             scales = [
                 (1.0, 'original'),      # Original size - for nearby faces
-                (0.75, 'medium'),       # 75% - medium distance faces
-                (0.5, 'small'),         # 50% - far away faces (half resolution)
-                (1.5, 'large')          # 150% - very close faces (enlarged)
+                (0.75, 'medium')        # 75% - medium distance faces
             ]
             
             for scale, scale_name in scales:
@@ -143,11 +141,11 @@ class OpenCVFaceDetector:
                 
                 print(f"[DEBUG] Scanning at {scale_name} scale ({int(scaled_gray.shape[1])}x{int(scaled_gray.shape[0])})")
                 
-                # Try all three cascades with aggressive parameters tuned for this scale
+                # Try all three cascades with conservative parameters to reduce false positives
                 cascade_configs = [
-                    ('alt2', self.cascade_frontal, {'scaleFactor': 1.02, 'minNeighbors': 2}),
-                    ('alt', self.cascade_alt, {'scaleFactor': 1.05, 'minNeighbors': 3}),
-                    ('default', self.cascade_default, {'scaleFactor': 1.08, 'minNeighbors': 4})
+                    ('alt2', self.cascade_frontal, {'scaleFactor': 1.05, 'minNeighbors': 6}),
+                    ('alt', self.cascade_alt, {'scaleFactor': 1.08, 'minNeighbors': 7}),
+                    ('default', self.cascade_default, {'scaleFactor': 1.10, 'minNeighbors': 8})
                 ]
                 
                 for cascade_name, cascade, params in cascade_configs:
@@ -286,9 +284,9 @@ class EnsembleFaceDetector:
                 accepted_box = (accepted_face['x'], accepted_face['y'], 
                                accepted_face['width'], accepted_face['height'])
                 
-                # Use VERY strict threshold (0.6-0.7) to only merge near-exact duplicates
-                # This prevents merging faces that are close together
-                if boxes_overlap(face_box, accepted_box, threshold=0.65):
+                # Use strict threshold (0.3) to merge overlapping detections
+                # This reduces false positives from multiple detection methods
+                if boxes_overlap(face_box, accepted_box, threshold=0.3):
                     is_duplicate = True
                     detector1 = face.get('detector', 'unknown')
                     detector2 = accepted_face.get('detector', 'unknown')
