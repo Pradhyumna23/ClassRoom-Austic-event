@@ -9,6 +9,52 @@ except Exception:
 from typing import List, Dict, Tuple
 
 
+def is_valid_face(box: Tuple[int, int, int, int], image_shape: Tuple) -> bool:
+    """
+    Validate if a detected box is likely a real face.
+    Filters out false positives like buttons, ears, etc.
+    
+    Args:
+        box: (x, y, width, height) tuple
+        image_shape: (height, width) of the image
+    
+    Returns:
+        True if the box is likely a valid face
+    """
+    x, y, w, h = box
+    img_h, img_w = image_shape[:2]
+    
+    # Filter 1: Minimum size - faces should be at least 40x40 pixels
+    # This removes buttons, small objects
+    if w < 40 or h < 40:
+        return False
+    
+    # Filter 2: Aspect ratio - faces should be roughly square-ish
+    # Valid range: 0.7 to 1.4 (not too wide or tall)
+    aspect_ratio = w / h if h != 0 else 0
+    if aspect_ratio < 0.7 or aspect_ratio > 1.4:
+        return False
+    
+    # Filter 3: Don't detect faces at extreme edges
+    # This filters out ears, partial faces at image boundaries
+    margin = 0.05  # 5% margin from edges
+    if x < img_w * margin or (x + w) > img_w * (1 - margin):
+        if w < 80:  # Only apply strict edge filtering to small detections
+            return False
+    
+    if y < img_h * margin or (y + h) > img_h * (1 - margin):
+        if h < 80:  # Only apply strict edge filtering to small detections
+            return False
+    
+    # Filter 4: Relative size - face shouldn't be too large compared to image
+    # (unless it's a close-up, then max 80% is ok)
+    face_area_ratio = (w * h) / (img_w * img_h)
+    if face_area_ratio > 0.6:
+        return False
+    
+    return True
+
+
 if HAS_MEDIAPIPE:
     class MediaPipeFaceDetector:
         """Fast face detection using MediaPipe - good for varying distances."""
@@ -36,6 +82,11 @@ if HAS_MEDIAPIPE:
                     y = int(max(0, bbox.ymin * h))
                     width = int(min(w - x, bbox.width * w))
                     height = int(min(h - y, bbox.height * h))
+                    
+                    # Validate face before adding padding
+                    if not is_valid_face((x, y, width, height), (h, w)):
+                        print(f"[DEBUG] MediaPipe rejected invalid face at ({x}, {y}) size {width}x{height}")
+                        continue
                     
                     # Add padding - slightly larger for better emotion detection
                     pad = 12
@@ -75,12 +126,26 @@ class RetinaFaceWrapper:
             faces = DeepFace.extract_faces(img_path=image, detector_backend='retinaface', 
                                           enforce_detection=False)
             results = []
+            
+            # Get image dimensions for validation
+            import cv2 as cv2_local
+            img_check = cv2_local.imread(image) if isinstance(image, str) else image
+            if img_check is not None:
+                img_h, img_w = img_check.shape[:2]
+            else:
+                img_h, img_w = 1920, 1080  # Default fallback
+            
             for idx, f in enumerate(faces):
                 area = f.get('facial_area', {})
                 x = int(area.get('x', 0))
                 y = int(area.get('y', 0))
                 w = int(area.get('w', 0))
                 h = int(area.get('h', 0))
+                
+                # Validate face before accepting
+                if not is_valid_face((x, y, w, h), (img_h, img_w)):
+                    print(f"[DEBUG] RetinaFace rejected invalid face at ({x}, {y}) size {w}x{h}")
+                    continue
                 
                 results.append({
                     'x': x, 
@@ -92,7 +157,7 @@ class RetinaFaceWrapper:
                 })
                 print(f"[DEBUG] RetinaFace face #{idx+1}: size {w}x{h}, confidence 0.90")
             
-            print(f"[DEBUG] RetinaFace detected {len(results)} faces total")
+            print(f"[DEBUG] RetinaFace detected {len(results)} valid faces total")
             return results
         except Exception as e:
             print(f"[DEBUG] RetinaFace detection error: {e}")
@@ -124,6 +189,7 @@ class OpenCVFaceDetector:
             gray = cv2.equalizeHist(gray)
             
             all_detected = {}  # Use dict to deduplicate by position
+            img_h, img_w = gray.shape
             
             # **MULTI-SCALE DETECTION**: Process at different image resolutions
             # This captures faces that are far (small) and near (large) to camera
@@ -150,20 +216,20 @@ class OpenCVFaceDetector:
                 
                 for cascade_name, cascade, params in cascade_configs:
                     try:
-                        # Adjust minSize based on scale
-                        min_size = int(20 * scale)
+                        # Adjust minSize based on scale - INCREASED minimum size
+                        min_size = int(40 * scale)  # Changed from 20 to 40
                         max_size = int(500 * scale)
                         
                         faces = cascade.detectMultiScale(
                             scaled_gray,
                             scaleFactor=params['scaleFactor'],
                             minNeighbors=params['minNeighbors'],
-                            minSize=(max(10, min_size), max(10, min_size)),
+                            minSize=(max(40, min_size), max(40, min_size)),  # Enforce 40px minimum
                             maxSize=(max_size, max_size),
                             flags=cv2.CASCADE_SCALE_IMAGE
                         )
                         
-                        print(f"[DEBUG]   {cascade_name}: detected {len(faces)} faces")
+                        print(f"[DEBUG]   {cascade_name}: detected {len(faces)} raw faces")
                         
                         # Scale back to original coordinates
                         for (x, y, w, h) in faces:
@@ -172,6 +238,11 @@ class OpenCVFaceDetector:
                                 y = int(y / scale)
                                 w = int(w / scale)
                                 h = int(h / scale)
+                            
+                            # Validate face before accepting
+                            if not is_valid_face((x, y, w, h), (img_h, img_w)):
+                                print(f"[DEBUG]   Rejected invalid face at ({x}, {y}) size {w}x{h} (aspect: {w/h:.2f})")
+                                continue
                             
                             # Round to nearest 8 pixels to group very similar detections
                             key = (round(x/8)*8, round(y/8)*8, round(w/8)*8, round(h/8)*8)
@@ -195,7 +266,7 @@ class OpenCVFaceDetector:
                     'detector': 'haar_cascade'
                 })
             
-            print(f"[DEBUG] Haar Cascade (multi-scale deduplicated) detected {len(results)} unique faces")
+            print(f"[DEBUG] Haar Cascade (multi-scale deduplicated) detected {len(results)} unique valid faces")
             return results
         except Exception as e:
             print(f"[DEBUG] Haar Cascade detection error: {e}")
