@@ -9,6 +9,21 @@ from deepface import DeepFace
 import os
 from multi_face_detector import EnsembleFaceDetector
 
+def convert_to_json_serializable(obj):
+    """Convert NumPy types and other non-JSON-serializable types to native Python types."""
+    if isinstance(obj, dict):
+        return {key: convert_to_json_serializable(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_to_json_serializable(item) for item in obj]
+    elif isinstance(obj, np.integer):
+        return int(obj)
+    elif isinstance(obj, np.floating):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    else:
+        return obj
+
 # Emotion mapping to classroom context
 # Enhanced mapping with 6 emotion categories for better classroom analysis
 EMOTION_MAP = {
@@ -168,12 +183,12 @@ class ClassroomEmotionAnalyzer:
             # Aggregate averages and percentages
             total_analyzed = len(individual_results)
             if total_analyzed == 0:
-                return {
+                return convert_to_json_serializable({
                     'status': 'error',
                     'error': 'No faces could be analyzed',
                     'total_faces_detected': total_faces,
                     'total_faces_analyzed': 0
-                }
+                })
             
             avg_emotions = {}
             percentages = {}
@@ -207,7 +222,7 @@ class ClassroomEmotionAnalyzer:
                 'average_emotions': sorted_avg_emotions,
                 'dominant_emotion': dominant
             }
-            return result
+            return convert_to_json_serializable(result)
         except Exception as e:
             print(f"[ERROR] Error in analyze_classroom_image: {e}")
             import traceback
