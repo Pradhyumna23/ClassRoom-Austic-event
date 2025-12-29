@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template, redirect, url_for, send_file
+from flask import Flask, request, jsonify, render_template, redirect, url_for
 import numpy as np
 import librosa
 import os
@@ -701,23 +701,6 @@ def classroom_analyze_image():
         if os.path.exists(temp_path):
             os.remove(temp_path)
         return jsonify({'error': str(e), 'status': 'error'}), 500
-
-
-@app.route('/marked-image/<filename>', methods=['GET'])
-def get_marked_image(filename):
-    """Serve the marked classroom image with detected faces circled."""
-    try:
-        # Sanitize filename to prevent path traversal
-        filename = os.path.basename(filename)
-        file_path = os.path.join(os.getcwd(), filename)
-        
-        if not os.path.exists(file_path):
-            return jsonify({'error': 'Image not found'}), 404
-        
-        return send_file(file_path, mimetype='image/jpeg')
-    except Exception as e:
-        print(f"[ERROR] Error serving marked image: {e}")
-        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':

@@ -474,6 +474,14 @@
                     <canvas id="classroomEmotionChart"></canvas>
                 </div>
 
+                <!-- Marked Image Preview Panel -->
+                <div id="marked-image-panel" style="margin-bottom: 20px; padding: 15px; background: #f5f5f5; border-radius: 8px; display: none;">
+                    <h4 style="text-align: left; color: #00796b; margin: 0 0 12px 0;">🎯 Detection Preview</h4>
+                    <div style="background: white; border-radius: 6px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                        <img id="marked-image-display" src="" alt="Marked classroom image" style="width: 100%; max-height: 400px; object-fit: contain; display: block;">
+                    </div>
+                </div>
+
                 <!-- Individual Students Grid -->
                 <h4 style="text-align: left; color: #00796b; margin: 20px 0 15px 0;">📍 Individual Students</h4>
                 <div id="students-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px;"></div>
@@ -736,6 +744,15 @@
                 });
             } else {
                 console.log('No individual emotions found in data');
+            }
+
+            // Display marked image if available
+            if (data.marked_image) {
+                const markedImagePanel = document.getElementById('marked-image-panel');
+                const markedImageDisplay = document.getElementById('marked-image-display');
+                markedImageDisplay.src = 'data:image/jpeg;base64,' + data.marked_image;
+                markedImagePanel.style.display = 'block';
+                console.log('Marked image displayed');
             }
 
             // Show results - CRITICAL FIX

@@ -36,20 +36,18 @@ EMOTION_MAP = {
     'disgust': 'distracted'        # Disengaged, repelled
 }
 
-def draw_face_detection_circles(image_path: str, faces: list, output_path: str = None) -> str:
+def draw_face_detection_circles(image_path: str, faces: list) -> str:
     """
     Draw circles and labels around detected faces in the image.
     
     Args:
         image_path: Path to the original image
         faces: List of detected face dictionaries with x, y, width, height
-        output_path: Where to save the annotated image (default: temp_marked_image.jpg)
     
     Returns:
-        Path to the annotated image
+        Base64-encoded image data
     """
-    if output_path is None:
-        output_path = 'temp_marked_image.jpg'
+    import base64
     
     try:
         img = cv2.imread(image_path)
@@ -88,10 +86,10 @@ def draw_face_detection_circles(image_path: str, faces: list, output_path: str =
             # Draw bounding box as well (optional, for clarity)
             cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 255), 2)  # Cyan box
         
-        # Save the annotated image
-        cv2.imwrite(output_path, img)
-        print(f"[DEBUG] Marked image saved to {output_path}")
-        return output_path
+        # Convert to base64
+        _, buffer = cv2.imencode('.jpg', img)
+        image_base64 = base64.b64encode(buffer).decode('utf-8')
+        return image_base64
     
     except Exception as e:
         print(f"[ERROR] Error drawing detection circles: {e}")
@@ -277,7 +275,7 @@ class ClassroomEmotionAnalyzer:
             print(f"[DEBUG] Emotion counts: {emotion_counts}")
 
             # Generate marked image showing detected faces
-            marked_image_path = draw_face_detection_circles(image_path, faces, 'temp_marked_classroom.jpg')
+            marked_image_base64 = draw_face_detection_circles(image_path, faces)
 
             result = {
                 'status': 'success',
@@ -288,7 +286,7 @@ class ClassroomEmotionAnalyzer:
                 'emotions_percentages': sorted_percentages,
                 'average_emotions': sorted_avg_emotions,
                 'dominant_emotion': dominant,
-                'marked_image_path': marked_image_path
+                'marked_image': marked_image_base64
             }
             return convert_to_json_serializable(result)
         except Exception as e:
